@@ -1,32 +1,27 @@
-import os
-from google.cloud import bigquery
+#app.py
 import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
+from google.oauth2 import service_account
+from google.cloud import bigquery
 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'sunpower-375201-74be4a55360d.json'
+# Create API client.
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"]
+)
+client = bigquery.Client(credentials=credentials)
 
+# Perform query.
+# Uses st.cache_data to only rerun when the query changes or after 10 min.
+@st.cache_data(ttl=600)
+def run_query(query):
+    query_job = client.query(query)
+    rows_raw = query_job.result()
+    # Convert to list of dicts. Required for st.cache_data to hash the return value.
+    rows = [dict(row) for row in rows_raw]
+    return rows
 
-client = bigquery.Client()
+rows = run_query('''SELECT * FROM `sunpower-375201.sunpower_agg.sunpower_full_funnel` WHERE Date = "2023-10-17" LIMIT 10''')
 
-sqlquery = """
-SELECT * FROM `sunpower-375201.sunpower_agg.sunpower_full_funnel` WHERE Date = "2023-10-17" 
-"""
-
-query_job = client.query(sqlquery).to_dataframe()
-
-st.dataframe(query_job)
-
-col1, col2, col3 = st.columns(3)
-col1.metric("Clicks", query_job.Clicks.sum())
-col2.metric("Impressions", query_job.Impressions.sum())
-col3.metric("Cost", round(query_job.Cost.sum()))
-
-
-# Create scatter plot of cost and clicks
-fig, ax = plt.subplots()
-sns.scatterplot(data=query_job, x="Cost", y="Clicks", ax=ax)
-ax.set_title("Cost vs Clicks")
-ax.set_xlabel("Cost")
-ax.set_ylabel("Clicks")
-st.pyplot(fig)
+# Print results.
+st.write("Query Results:")
+for row in rows:
+    st.write("✍️ " + row['word'])
